@@ -1,3 +1,3 @@
 model,test_roc_auc,test_pr_auc
 logistic_regression,0.8611,0.3632
-xgboost,0.8696,0.3996
+xgboost,0.8694,0.3976
