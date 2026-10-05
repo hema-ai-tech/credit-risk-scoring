@@ -65,3 +65,8 @@ def test_missing_required_field_rejected():
     payload = {k: v for k, v in LOW_RISK.items() if k != "age"}
     response = client.post("/predict", json=payload)
     assert response.status_code == 422
+
+def test_home_page_loads():
+    response = client.get("/")
+    assert response.status_code == 200
+    assert "Credit Risk Scoring" in response.text

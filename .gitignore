@@ -12,3 +12,6 @@ models/*
 !data/raw/.gitkeep
 !data/processed/.gitkeep
 !models/.gitkeep
+
+!models/best_model.joblib
+!models/threshold.json

@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Credit Risk Scoring</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 0; background: #f4f6fa; color: #1c2430; }
+  .wrap { max-width: 820px; margin: 0 auto; padding: 24px 16px 48px; }
+  h1 { margin: 0 0 4px; font-size: 1.6rem; }
+  .sub { color: #5b6677; margin: 0 0 20px; }
+  .card { background: #fff; border-radius: 12px; padding: 20px; box-shadow: 0 1px 4px rgba(0,0,0,.08); margin-bottom: 16px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; }
+  label { display: block; font-size: .85rem; font-weight: 600; margin-bottom: 4px; }
+  .hint { font-weight: 400; color: #7a8494; }
+  input { width: 100%; padding: 9px 10px; border: 1px solid #c9d1dd; border-radius: 8px; font-size: 1rem; }
+  input:focus { outline: 2px solid #3b6fe0; border-color: transparent; }
+  .row { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 18px; }
+  button { border: 0; border-radius: 8px; padding: 10px 16px; font-size: .95rem; cursor: pointer; }
+  .primary { background: #3b6fe0; color: #fff; font-weight: 600; }
+  .primary:disabled { opacity: .6; cursor: wait; }
+  .ghost { background: #e8edf6; color: #1c2430; }
+  #result { display: none; }
+  .badge { display: inline-block; padding: 6px 14px; border-radius: 999px; font-weight: 700; color: #fff; }
+  .high { background: #d64545; }
+  .low { background: #2e9e5b; }
+  .meter { position: relative; height: 12px; background: #e3e8f0; border-radius: 6px; margin: 14px 0 6px; }
+  .fill { height: 100%; border-radius: 6px; background: linear-gradient(90deg, #2e9e5b, #e6b422, #d64545); }
+  .mark { position: absolute; top: -4px; width: 2px; height: 20px; background: #1c2430; }
+  .small { font-size: .8rem; color: #5b6677; }
+  ul { padding-left: 18px; margin: 8px 0 0; }
+  li { margin-bottom: 6px; }
+  .up { color: #d64545; font-weight: 600; }
+  .down { color: #2e9e5b; font-weight: 600; }
+  .error { color: #d64545; margin-top: 12px; }
+  a { color: #3b6fe0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Credit Risk Scoring</h1>
+  <p class="sub">XGBoost model with SHAP explanations. Enter an applicant's details to see the risk score and the main reasons behind it.</p>
+
+  <div class="card">
+    <form id="form">
+      <div class="grid">
+        <div><label for="revolving_utilization">Credit utilization <span class="hint">(balance / limit, e.g. 0.65)</span></label>
+          <input id="revolving_utilization" type="number" step="any" min="0" required></div>
+        <div><label for="age">Age <span class="hint">(18 to 110)</span></label>
+          <input id="age" type="number" step="1" min="18" max="110" required></div>
+        <div><label for="past_due_30_59">Times 30-59 days past due</label>
+          <input id="past_due_30_59" type="number" step="1" min="0" required></div>
+        <div><label for="past_due_60_89">Times 60-89 days past due</label>
+          <input id="past_due_60_89" type="number" step="1" min="0" required></div>
+        <div><label for="times_90_days_late">Times 90+ days late</label>
+          <input id="times_90_days_late" type="number" step="1" min="0" required></div>
+        <div><label for="debt_ratio">Debt ratio <span class="hint">(monthly debt / income)</span></label>
+          <input id="debt_ratio" type="number" step="any" min="0" required></div>
+        <div><label for="monthly_income">Monthly income <span class="hint">(optional)</span></label>
+          <input id="monthly_income" type="number" step="any" min="0"></div>
+        <div><label for="open_credit_lines">Open loans and credit lines</label>
+          <input id="open_credit_lines" type="number" step="1" min="0" required></div>
+        <div><label for="real_estate_loans">Mortgage / real estate loans</label>
+          <input id="real_estate_loans" type="number" step="1" min="0" required></div>
+        <div><label for="dependents">Dependents <span class="hint">(optional)</span></label>
+          <input id="dependents" type="number" step="1" min="0"></div>
+      </div>
+      <div class="row">
+        <button class="primary" id="submit" type="submit">Calculate risk</button>
+        <button class="ghost" type="button" id="ex-high">Load high-risk example</button>
+        <button class="ghost" type="button" id="ex-low">Load low-risk example</button>
+      </div>
+      <div class="error" id="error"></div>
+    </form>
+  </div>
+
+  <div class="card" id="result">
+    <span class="badge" id="decision"></span>
+    <div class="meter"><div class="fill" id="fill"></div><div class="mark" id="mark"></div></div>
+    <div class="small">Risk score: <strong id="score"></strong> &nbsp;|&nbsp; Decision threshold (black line): <strong id="threshold"></strong></div>
+    <h3 style="margin-bottom:0">Top reasons</h3>
+    <ul id="factors"></ul>
+    <p class="small">The risk score ranks applicants by risk. It is not a calibrated default probability.</p>
+  </div>
+
+  <p class="small">API documentation: <a href="/docs">/docs</a> &nbsp;|&nbsp;
+    <a href="https://github.com/hema-ai-tech/credit-risk-scoring">Source code on GitHub</a></p>
+</div>
+
+<script>
+const FIELDS = ["revolving_utilization","age","past_due_30_59","past_due_60_89","times_90_days_late",
+  "debt_ratio","monthly_income","open_credit_lines","real_estate_loans","dependents"];
+const FLOAT_FIELDS = ["revolving_utilization","debt_ratio","monthly_income"];
+const EXAMPLES = {
+  high: {revolving_utilization:1.2, age:25, past_due_30_59:2, past_due_60_89:1, times_90_days_late:2,
+         debt_ratio:0.8, monthly_income:2000, open_credit_lines:4, real_estate_loans:0, dependents:2},
+  low:  {revolving_utilization:0.1, age:52, past_due_30_59:0, past_due_60_89:0, times_90_days_late:0,
+         debt_ratio:0.2, monthly_income:9000, open_credit_lines:8, real_estate_loans:1, dependents:1},
+};
+const LABELS = {
+  RevolvingUtilizationOfUnsecuredLines: "Credit utilization",
+  age: "Age",
+  "NumberOfTime30-59DaysPastDueNotWorse": "Times 30-59 days past due",
+  DebtRatio: "Debt ratio",
+  MonthlyIncome: "Monthly income",
+  NumberOfOpenCreditLinesAndLoans: "Open credit lines",
+  NumberOfTimes90DaysLate: "Times 90+ days late",
+  NumberRealEstateLoansOrLines: "Real estate loans",
+  "NumberOfTime60-89DaysPastDueNotWorse": "Times 60-89 days past due",
+  NumberOfDependents: "Dependents",
+  PastDueMissing: "Past-due data missing",
+  IncomeMissing: "Income not provided",
+  DependentsMissing: "Dependents not provided",
+  TotalPastDue: "Total past-due events",
+  TotalOpenAccounts: "Total open accounts",
+  IncomePerPerson: "Income per household member",
+};
+
+const $ = (id) => document.getElementById(id);
+
+function fill(example) {
+  FIELDS.forEach((f) => { $(f).value = example[f]; });
+  $("error").textContent = "";
+}
+
+function readForm() {
+  const payload = {};
+  FIELDS.forEach((f) => {
+    const raw = $(f).value.trim();
+    if (raw === "") { payload[f] = null; return; }
+    payload[f] = FLOAT_FIELDS.includes(f) ? parseFloat(raw) : parseInt(raw, 10);
+  });
+  return payload;
+}
+
+function errorText(body) {
+  if (body && Array.isArray(body.detail)) {
+    return body.detail.map((d) => (d.loc ? d.loc[d.loc.length - 1] + ": " : "") + d.msg).join("; ");
+  }
+  return (body && body.detail) || "Something went wrong. Please try again.";
+}
+
+function show(result) {
+  const high = result.decision === "high_risk";
+  const badge = $("decision");
+  badge.textContent = high ? "HIGH RISK" : "LOW RISK";
+  badge.className = "badge " + (high ? "high" : "low");
+  $("fill").style.width = (result.risk_score * 100).toFixed(1) + "%";
+  $("mark").style.left = (result.threshold * 100).toFixed(1) + "%";
+  $("score").textContent = result.risk_score.toFixed(3);
+  $("threshold").textContent = result.threshold.toFixed(3);
+
+  const list = $("factors");
+  list.innerHTML = "";
+  result.top_factors.forEach((f) => {
+    const li = document.createElement("li");
+    const name = document.createElement("strong");
+    name.textContent = (LABELS[f.feature] || f.feature) + " (" + Number(f.value).toFixed(2) + "): ";
+    const effect = document.createElement("span");
+    effect.className = f.effect === "increases risk" ? "up" : "down";
+    effect.textContent = f.effect;
+    li.append(name, effect);
+    list.appendChild(li);
+  });
+  $("result").style.display = "block";
+  $("result").scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+
+$("ex-high").addEventListener("click", () => fill(EXAMPLES.high));
+$("ex-low").addEventListener("click", () => fill(EXAMPLES.low));
+
+$("form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  $("error").textContent = "";
+  const button = $("submit");
+  button.disabled = true;
+  button.textContent = "Calculating...";
+  try {
+    const response = await fetch("/predict", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(readForm()),
+    });
+    const body = await response.json();
+    if (!response.ok) { $("error").textContent = errorText(body); }
+    else { show(body); }
+  } catch (err) {
+    $("error").textContent = "Could not reach the server. Please try again in a moment.";
+  } finally {
+    button.disabled = false;
+    button.textContent = "Calculate risk";
+  }
+});
+
+fill(EXAMPLES.low);
+</script>
+</body>
+</html>

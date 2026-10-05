@@ -1,9 +1,13 @@
 """FastAPI service for credit risk scoring."""
+from pathlib import Path
+
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import RedirectResponse
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from src.predict import get_scorer
+
+INDEX_PAGE = Path(__file__).resolve().parent / "index.html"
 
 app = FastAPI(
     title="Credit Risk Scoring API",
@@ -56,8 +60,8 @@ class Prediction(BaseModel):
     top_factors: list[Factor]
 
 @app.get("/", include_in_schema=False)
-def root() -> RedirectResponse:
-    return RedirectResponse(url="/docs")
+def home() -> FileResponse:
+    return FileResponse(INDEX_PAGE)
 
 @app.get("/health")
 def health() -> dict:
