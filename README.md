@@ -4,6 +4,8 @@ An end-to-end machine learning project that predicts whether a loan applicant wi
 
 **Dataset:** [Give Me Some Credit](https://www.kaggle.com/c/GiveMeSomeCredit) (Kaggle), 150,000 borrowers, about 6.7% defaults.
 
+**Live demo:** https://credit-risk-scoring-rcbo.onrender.com/ (free hosting: the first load can take about a minute while the server wakes up)
+
 ## Results
 
 All numbers are on a held-out test set (30,000 applicants) that was never used for training or model selection.
@@ -127,7 +129,7 @@ docker build -t credit-risk-api .
 docker run --rm -p 8000:8000 credit-risk-api
 ```
 
-Open http://localhost:8000/docs.
+Open https://credit-risk-scoring-rcbo.onrender.com/.
 
 ## Limitations
 
